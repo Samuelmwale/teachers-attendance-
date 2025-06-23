@@ -1,0 +1,220 @@
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>MISANJO CDSS TEACHERS TIME BOOK</title>
+  <style>
+    body { font-family: 'Segoe UI', sans-serif; margin: 0; background: #f4f4f4; }
+    .container { max-width: 1000px; margin: auto; background: white; padding: 20px; border-radius: 10px; }
+    h1 { text-align: center; color: #004080; margin-bottom: 10px; }
+    input, select, button { padding: 8px; margin: 5px 2px; border-radius: 5px; }
+    button { background: #007acc; color: white; border: none; cursor: pointer; }
+    table { width: 100%; border-collapse: collapse; min-width: 950px; margin-top: 10px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: center; font-size: 13px; }
+    th { background: #007acc; color: white; text-transform: uppercase; }
+    .table-container { overflow-x: auto; }
+    .warning { color: red; text-align: center; font-weight: bold; display: none; }
+    #search, #nameInput { width: 200px; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h1>MISANJO CDSS TEACHERS TIME BOOK</h1>
+
+  <!-- Filters -->
+  <div>
+    <label>Year:</label>
+    <select id="yearSelect"></select>
+
+    <label>Month:</label>
+    <select id="monthSelect">
+      <option>January</option><option>February</option><option>March</option>
+      <option>April</option><option>May</option><option>June</option>
+      <option>July</option><option>August</option><option>September</option>
+      <option>October</option><option>November</option><option>December</option>
+    </select>
+
+    <label>Week:</label>
+    <select id="weekSelect">
+      <option>Week 1</option><option>Week 2</option><option>Week 3</option><option>Week 4</option><option>Week 5</option>
+    </select>
+
+    <input type="text" id="search" placeholder="Search by name..." onkeyup="filterTable()"/>
+  </div>
+
+  <!-- Add Teacher -->
+  <div>
+    <input type="text" id="nameInput" placeholder="Enter teacher name"/>
+    <button onclick="addTeacher()">Add</button>
+  </div>
+
+  <!-- Table -->
+  <div class="table-container">
+    <table id="attendanceTable">
+      <thead>
+        <tr>
+          <th>S/N</th><th>NAME</th>
+          <th>MON</th><th>MON TIME</th>
+          <th>TUE</th><th>TUE TIME</th>
+          <th>WED</th><th>WED TIME</th>
+          <th>THU</th><th>THU TIME</th>
+          <th>FRI</th><th>FRI TIME</th>
+          <th>TOTAL</th><th>ACTION</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+  </div>
+
+  <div class="warning" id="warning">Inactive. Logging out in <span id="countdown">10</span> seconds...</div>
+</div>
+
+<script>
+  
+  const yearSelect = document.getElementById('yearSelect');
+  const monthSelect = document.getElementById('monthSelect');
+  const weekSelect = document.getElementById('weekSelect');
+  const tableBody = document.getElementById('tableBody');
+  const searchInput = document.getElementById('search');
+  let inactivityTimer, countdownInterval;
+
+  const currentYear = new Date().getFullYear();
+  for (let y = currentYear - 5; y <= currentYear + 5; y++) {
+    const opt = document.createElement('option');
+    opt.value = y;
+    opt.textContent = y;
+    yearSelect.appendChild(opt);
+  }
+  yearSelect.value = currentYear;
+
+  function getStorageKey() {
+    return `attendance-${yearSelect.value}-${monthSelect.value}-${weekSelect.value}`;
+  }
+
+  function saveData() {
+    const data = [];
+    const rows = tableBody.querySelectorAll("tr");
+    rows.forEach(row => {
+      const name = row.cells[1].textContent;
+      const checkboxes = row.querySelectorAll('input[type="checkbox"]');
+      const times = row.querySelectorAll('.time');
+      const checked = Array.from(checkboxes).map(cb => cb.checked);
+      const timestamps = Array.from(times).map(td => td.textContent);
+      data.push({ name, checked, timestamps });
+    });
+    localStorage.setItem(getStorageKey(), JSON.stringify(data));
+  }
+
+  function loadData() {
+    tableBody.innerHTML = '';
+    const data = JSON.parse(localStorage.getItem(getStorageKey()) || '[]');
+    data.forEach((entry, i) => {
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td>${i + 1}</td>
+        <td>${entry.name}</td>
+        ${['mon','tue','wed','thu','fri'].map((d, idx) =>
+          `<td><input type="checkbox" ${entry.checked[idx] ? 'checked' : ''} onchange="updateDay(this)"></td>
+           <td class="time ${d}">${entry.timestamps[idx]}</td>`
+        ).join('')}
+        <td class="total">${entry.checked.filter(Boolean).length}</td>
+        <td><button onclick="deleteRow(this)">Delete</button></td>
+      `;
+      tableBody.appendChild(row);
+    });
+  }
+
+  function updateDay(checkbox) {
+    const row = checkbox.closest('tr');
+    const checkboxes = row.querySelectorAll('input[type="checkbox"]');
+    const times = row.querySelectorAll('.time');
+    let total = 0;
+
+    checkboxes.forEach((cb, i) => {
+      if (cb.checked) {
+        total++;
+        times[i].textContent = new Date().toLocaleTimeString();
+      } else {
+        times[i].textContent = '-';
+      }
+    });
+
+    row.querySelector('.total').textContent = total;
+    saveData();
+    resetInactivityTimer();
+  }
+
+  function addTeacher() {
+    const name = document.getElementById('nameInput').value.trim();
+    if (!name) return;
+    const row = document.createElement('tr');
+    const count = tableBody.rows.length + 1;
+
+    row.innerHTML = `
+      <td>${count}</td>
+      <td>${name}</td>
+      ${['mon','tue','wed','thu','fri'].map(d =>
+        `<td><input type="checkbox" onchange="updateDay(this)"></td>
+         <td class="time ${d}">-</td>`).join('')}
+      <td class="total">0</td>
+      <td><button onclick="deleteRow(this)">Delete</button></td>
+    `;
+    tableBody.appendChild(row);
+    document.getElementById('nameInput').value = '';
+    saveData();
+    resetInactivityTimer();
+  }
+
+  function deleteRow(btn) {
+    const row = btn.closest('tr');
+    row.remove();
+    saveData();
+    resetInactivityTimer();
+  }
+
+  function filterTable() {
+    const term = searchInput.value.toLowerCase();
+    const rows = tableBody.querySelectorAll('tr');
+    rows.forEach(row => {
+      const name = row.cells[1].textContent.toLowerCase();
+      row.style.display = name.includes(term) ? '' : 'none';
+    });
+    resetInactivityTimer();
+  }
+
+  function resetInactivityTimer() {
+    clearTimeout(inactivityTimer);
+    clearInterval(countdownInterval);
+    document.getElementById('warning').style.display = 'none';
+
+    inactivityTimer = setTimeout(() => {
+      let countdown = 10;
+      document.getElementById('warning').style.display = 'block';
+      document.getElementById('countdown').textContent = countdown;
+
+      countdownInterval = setInterval(() => {
+        countdown--;
+        document.getElementById('countdown').textContent = countdown;
+        if (countdown === 0) location.reload();
+      }, 1000);
+    }, 60000); // 1 minute
+  }
+
+  // Load new data when selection changes
+  [yearSelect, monthSelect, weekSelect].forEach(el => el.addEventListener('change', loadData));
+
+  // Activity tracker
+  document.addEventListener('mousemove', resetInactivityTimer);
+  document.addEventListener('keydown', resetInactivityTimer);
+
+  // Initial load
+  loadData();
+</script>
+
+</body>
+</html>
+
